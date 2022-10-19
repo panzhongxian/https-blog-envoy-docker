@@ -1,0 +1,64 @@
+static_resources:
+  listeners:
+  - name: listener_443
+    address:
+      socket_address: { address: 0.0.0.0, port_value: 443 }
+    filter_chains:
+    - filter_chain_match:
+        server_names: ["your-site.cn", "www.your-site.cn"]
+      transport_socket:
+        name: envoy.transport_sockets.tls
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
+          common_tls_context:
+            tls_certificates:
+            - certificate_chain:
+                filename: /etc/ssl/your-site.cn/your-site.cn_bundle.pem
+              private_key:
+                filename: /etc/ssl/your-site.cn/your-site.cn.key
+      filters:
+      - name: envoy.filters.network.http_connection_manager
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+          stat_prefix: ingress_http
+          route_config:
+            virtual_hosts:
+            - name: default
+              domains: ["your-site.cn", "www.your-site.cn"]
+              routes:
+              - match: { prefix: "/" }
+                route: { cluster: service_hugo}
+          http_filters:
+          - name: envoy.filters.http.router
+
+  clusters:
+  - name: service_hugo
+    connect_timeout: 0.25s
+    type: LOGICAL_DNS
+    dns_lookup_family: V4_ONLY
+    lb_policy: ROUND_ROBIN
+    load_assignment:
+      cluster_name: service_google
+      endpoints:
+      - lb_endpoints:
+        - endpoint:
+            address:
+              socket_address:
+                address: host.docker.internal
+                port_value: 13131
+
+admin:
+  access_log_path: "/dev/null"
+  address:
+    socket_address:
+      address: 0.0.0.0
+      port_value: 8001
+layered_runtime:
+  layers:
+    - name: static_layer_0
+      static_layer:
+        envoy:
+          resource_limits:
+            listener:
+              example_listener_name:
+                connection_limit: 10000
